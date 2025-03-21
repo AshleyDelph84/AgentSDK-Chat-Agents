@@ -97,13 +97,14 @@ triage_agent = Agent(
         "1. FRENCH TRANSLATION AGENT: For translating text to/from French or answering questions about French language and culture\n"
         "2. WEB SEARCH AGENT: For finding factual information and current events on the web\n\n"
         "Your job is to:\n"
-        "1. Analyze the user's request\n"
-        "2. Determine which specialized agent is best suited to handle it\n"
-        "3. Hand off the request to the appropriate agent\n"
-        "4. If the request doesn't clearly fit either agent, use your best judgment\n"
-        "5. For general questions not requiring specialized knowledge, you may answer directly\n\n"
+        "1. When the conversation begins, immediately say: 'Welcome! My name is Barry, how can I assist you today?' without waiting for user input.\n"
+        "2. After the welcome message, analyze the user's request\n"
+        "3. Determine which specialized agent is best suited to handle it\n"
+        "4. Hand off the request to the appropriate agent\n"
+        "5. If the request doesn't clearly fit either agent, use your best judgment\n"
+        "6. For general questions not requiring specialized knowledge, you may answer directly\n\n"
         "Always prioritize giving the user the best experience by routing to the most appropriate agent.\n\n"
-        "Since you are communicating via voice, keep your responses concise and conversational. Introduce yourself when first speaking."
+        "Since you are communicating via voice, keep your responses concise and conversational."
     ),
     handoffs=[french_agent, web_search_agent],
     model="gpt-4o-mini" # Using a more capable model for voice interactions
@@ -118,7 +119,6 @@ async def run_voice_session():
     print("1. Triage Agent - Routes your request to the appropriate agent")
     print("2. Web Search Agent - Searches the web for information")
     print("3. French Translation Agent - Handles French translations and language questions")
-    print("Testing with 3 seconds of silence audio as input...")
     print("=" * 50)
     
     # Create a voice workflow using our triage agent
@@ -137,31 +137,41 @@ async def run_voice_session():
     )
     
     try:
-        # For simplicity, create 3 seconds of silence as audio input
-        # This matches the official example in the documentation
+        # Step 1: Play welcome message
+        print("Playing welcome message...")
         samplerate = 24000  # Hz
+        welcome_buffer = np.zeros(samplerate * 1, dtype=np.int16)  # 1 second of silence
+        welcome_input = AudioInput(buffer=welcome_buffer)
+        
+        player = sd.OutputStream(samplerate=samplerate, channels=1, dtype=np.int16)
+        player.start()
+        welcome_result = await pipeline.run(welcome_input)
+        
+        print("Agent is introducing itself...")
+        async for event in welcome_result.stream():
+            if event.type == "voice_stream_event_audio":
+                player.write(event.data)
+            elif event.type == "voice_stream_event_lifecycle" and event.event == "turn_ended":
+                print("Welcome message completed.")
+        player.stop()
+        
+        # Step 2: Continue with original silence test
+        print("\nTesting with 3 seconds of silence audio as input...")
         buffer = np.zeros(samplerate * 3, dtype=np.int16)
         audio_input = AudioInput(buffer=buffer)
         
         print("Processing audio input...")
-        
-        # Setup audio output stream
         player = sd.OutputStream(samplerate=samplerate, channels=1, dtype=np.int16)
         player.start()
         
-        # Run the pipeline with the audio input
         result = await pipeline.run(audio_input)
         
-        # Process and play the response
         print("Agent is responding...")
         async for event in result.stream():
             if event.type == "voice_stream_event_audio":
-                # Play the audio response
                 player.write(event.data)
             elif event.type == "voice_stream_event_lifecycle":
-                # Print lifecycle event information
                 print(f"Lifecycle event: {event}")
-                # The correct attribute is 'event', not 'name' or 'event_name'
                 if event.event == "turn_ended":
                     print("Agent finished speaking.")
                 elif event.event == "turn_started":
@@ -173,7 +183,7 @@ async def run_voice_session():
         
         player.stop()
         print("\nVoice interaction completed successfully!")
-        
+    
     except Exception as e:
         print(f"An error occurred: {str(e)}")
         import traceback
@@ -211,36 +221,44 @@ async def interactive_voice_session():
     duration = 5  # seconds
     
     try:
+        # Step 1: Play welcome message
+        print("Playing welcome message...")
+        welcome_buffer = np.zeros(samplerate * 1, dtype=np.int16)  # 1 second of silence
+        welcome_input = AudioInput(buffer=welcome_buffer)
+        
+        player = sd.OutputStream(samplerate=samplerate, channels=1, dtype=np.int16)
+        player.start()
+        welcome_result = await pipeline.run(welcome_input)
+        
+        print("Agent is introducing itself...")
+        async for event in welcome_result.stream():
+            if event.type == "voice_stream_event_audio":
+                player.write(event.data)
+            elif event.type == "voice_stream_event_lifecycle" and event.event == "turn_ended":
+                print("Welcome message completed.")
+        player.stop()
+        
+        # Step 2: Continue with interactive loop
         while True:
             print("\nListening (speak for 5 seconds)...")
-            
-            # Record audio from microphone
             audio_input_np = sd.rec(int(samplerate * duration), samplerate=samplerate, 
                                   channels=1, dtype=np.int16)
-            sd.wait()  # Wait until recording is finished
+            sd.wait()
             
             print("Processing your speech...")
-            
-            # Create audio input from numpy array
             audio_input = AudioInput(buffer=audio_input_np.flatten())
             
-            # Setup audio output stream
             player = sd.OutputStream(samplerate=samplerate, channels=1, dtype=np.int16)
             player.start()
             
-            # Run the pipeline with the audio input
             result = await pipeline.run(audio_input)
             
-            # Process and play the response
             print("Agent is responding...")
             async for event in result.stream():
                 if event.type == "voice_stream_event_audio":
-                    # Play the audio response
                     player.write(event.data)
                 elif event.type == "voice_stream_event_lifecycle":
-                    # Print lifecycle event information
                     print(f"Lifecycle event: {event}")
-                    # The correct attribute is 'event', not 'name' or 'event_name'
                     if event.event == "turn_ended":
                         print("Agent finished speaking.")
                     elif event.event == "turn_started":
@@ -252,7 +270,7 @@ async def interactive_voice_session():
             
             player.stop()
             print("\nReady for next question. Press Ctrl+C to exit.")
-            
+    
     except KeyboardInterrupt:
         print("\nExiting voice agent session. Goodbye!")
     except Exception as e:
